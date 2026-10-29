@@ -51,7 +51,8 @@ def test_render_and_set_summary():
     assert markdown.SUMMARY_PLACEHOLDER in md
 
     updated = markdown.set_summary(md, "### Overview\nWe talked.", "Roadmap sync")
-    assert "title: Roadmap sync" in updated
+    assert markdown.field(updated, "title") == "Roadmap sync"
+    assert markdown.field(updated, "title_source") == "claude"
     assert "# Roadmap sync" in updated
     assert markdown.SUMMARY_PLACEHOLDER not in updated
     assert "### Overview\nWe talked.\n\n## Transcript" in updated

@@ -57,6 +57,14 @@ class Config:
     claude_command: str = "claude"
     summary_prompt: str = DEFAULT_SUMMARY_PROMPT
 
+    # iCal feeds (URLs or .ics paths) used to title meetings and list attendees.
+    # For Google Calendar: Settings -> your calendar -> Integrate calendar -> "Secret address in iCal format".
+    calendars: list[str] = field(default_factory=list)
+    # Your calendar address, so overlapping events you declined are skipped.
+    calendar_email: str | None = None
+    # A recording may start up to this many minutes before its event.
+    calendar_window: float = 15.0
+
     # Substrings matched against the binary/app name of anything holding the mic.
     apps: list[str] = field(
         default_factory=lambda: [

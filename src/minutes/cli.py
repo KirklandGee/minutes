@@ -12,6 +12,7 @@ import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import urlparse
 
 from minutes import __version__, config, session
 
@@ -89,9 +90,27 @@ def cmd_summarize(args, cfg):
     print(summarize_file(Path(args.file).expanduser().resolve(), cfg))
 
 
+def cmd_calendar(args, cfg):
+    from datetime import datetime
+
+    from minutes.calendar import find_event
+
+    if not cfg.calendars:
+        sys.exit(f"minutes: no `calendars` configured in {config.CONFIG_PATH}")
+    at = datetime.fromisoformat(args.at).astimezone() if args.at else datetime.now().astimezone()
+    event = find_event(cfg, at)
+    if not event:
+        sys.exit(f"no event at {at:%Y-%m-%d %H:%M}")
+    print(f"{event.title}\n{event.start:%Y-%m-%d %H:%M}-{event.end:%H:%M}")
+    if event.attendees:
+        print("attendees: " + ", ".join(event.attendees))
+
+
 def cmd_config(args, cfg):
     print(f"# {config.CONFIG_PATH}{'' if config.CONFIG_PATH.exists() else ' (not created; defaults)'}")
     for key, value in asdict(cfg).items():
+        if key == "calendars":  # secret feed URLs: don't print them
+            value = [urlparse(c).netloc or c for c in value]
         if key != "summary_prompt":
             print(f"{key} = {value!r}")
 
@@ -131,6 +150,10 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("summarize", help="(re)generate the summary for a meeting file")
     p.add_argument("file")
     p.set_defaults(func=cmd_summarize)
+
+    p = sub.add_parser("calendar", help="show the calendar event a recording would be matched to")
+    p.add_argument("--at", help="ISO time to look up (default: now), e.g. 2026-10-29T14:30")
+    p.set_defaults(func=cmd_calendar)
 
     sub.add_parser("config", help="show effective configuration").set_defaults(func=cmd_config)
     sub.add_parser("install-service", help="install a systemd user service for the daemon").set_defaults(func=cmd_install_service)

@@ -20,10 +20,11 @@ def summarize_file(md_path: Path, cfg: Config) -> Path:
     if not claude:
         raise RuntimeError(f"{cfg.claude_command!r} not found on PATH")
     md = md_path.read_text()
-    transcript = markdown.transcript_text(md)
+    # Frontmatter gives Claude the calendar title and attendee names to attribute action items.
+    context = f"{markdown.frontmatter(md)}\n{markdown.transcript_text(md)}"
     result = subprocess.run(
         [claude, "-p", cfg.summary_prompt, "--output-format", "text"],
-        input=transcript,
+        input=context,
         capture_output=True,
         text=True,
         cwd=md_path.parent,
@@ -32,6 +33,8 @@ def summarize_file(md_path: Path, cfg: Config) -> Path:
     if result.returncode != 0:
         raise RuntimeError(f"claude exited {result.returncode}: {result.stderr.strip()[:500]}")
     title, summary = split_title(result.stdout)
+    if markdown.field(md, "title_source") not in (None, "default", "claude"):
+        title = None  # calendar and hand-written titles win over Claude's guess
     md_path.write_text(markdown.set_summary(md, summary, title))
     if title:
         # Keep the timestamp prefix, swap the slug.

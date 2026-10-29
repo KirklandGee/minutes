@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 from pathlib import Path
@@ -28,16 +29,22 @@ def render(
     segments: list[Segment],
     audio_dir: Path | None,
     summary: str | None,
+    title_source: str = "default",
+    attendees: list[str] | None = None,
 ) -> str:
+    # JSON strings/lists are valid YAML, and survive titles like "Sync: Q4".
     front = [
         "---",
-        f"title: {title}",
+        f"title: {json.dumps(title)}",
+        f"title_source: {title_source}",
         f"date: {started.isoformat(timespec='seconds')}",
         f"app: {app}",
         f"duration: {clock(duration)}",
     ]
+    if attendees:
+        front.append(f"attendees: {json.dumps(attendees)}")
     if audio_dir:
-        front.append(f"audio: {audio_dir}")
+        front.append(f"audio: {json.dumps(str(audio_dir))}")
     front.append("---")
     body = [
         "",
@@ -72,9 +79,24 @@ def set_summary(md: str, summary: str, title: str | None) -> str:
         flags=re.S,
     )
     if title:
-        md = re.sub(r"^title: .*$", f"title: {title}", md, count=1, flags=re.M)
-        md = re.sub(r"^# .*$", f"# {title}", md, count=1, flags=re.M)
+        md = re.sub(r"^title: .*$", lambda _: f"title: {json.dumps(title)}", md, count=1, flags=re.M)
+        md = re.sub(r"^title_source: .*$", "title_source: claude", md, count=1, flags=re.M)
+        md = re.sub(r"^# .*$", lambda _: f"# {title}", md, count=1, flags=re.M)
     return md
+
+
+def frontmatter(md: str) -> str:
+    match = re.match(r"---\n.*?\n---\n", md, flags=re.S)
+    return match.group(0) if match else ""
+
+
+def field(md: str, key: str) -> str | None:
+    """A scalar frontmatter value (unquoted), or None."""
+    match = re.search(rf"^{re.escape(key)}: (.*)$", frontmatter(md), flags=re.M)
+    if not match:
+        return None
+    value = match.group(1).strip()
+    return json.loads(value) if value.startswith('"') else value
 
 
 def transcript_text(md: str) -> str:

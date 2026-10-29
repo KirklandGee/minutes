@@ -12,7 +12,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from minutes import markdown
+from minutes import calendar, markdown
 from minutes.config import RUNTIME_DIR, Config
 from minutes.recorder import Recorder, duration
 from minutes.summarize import summarize_file
@@ -100,13 +100,22 @@ def process(session_dir: Path, cfg: Config) -> Path:
     log.info("transcribing %s with %s", session_dir, cfg.model)
     segments = transcribe(wavs, cfg)
 
-    title = meta.get("title") or ("Meeting" if app == "manual" else f"{app.title()} meeting")
+    title, title_source, attendees = meta.get("title"), "manual", []
+    if not title and (event := calendar.find_event(cfg, started)):
+        log.info("matched calendar event %r", event.title)
+        title, title_source, attendees = event.title, "calendar", event.attendees
+    if not title:
+        title = "Meeting" if app == "manual" else f"{app.title()} meeting"
+        title_source = "default"
+
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
     md_path = markdown.output_path(cfg.output_dir, started, title)
     md_path.write_text(markdown.render(
         title, started, app, length, segments,
         session_dir if cfg.keep_audio else None,
         None if cfg.summarize and segments else "_Not summarized._",
+        title_source=title_source,
+        attendees=attendees,
     ))
     log.info("wrote %s", md_path)
 

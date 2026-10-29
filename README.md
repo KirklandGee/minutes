@@ -32,7 +32,8 @@ duration: 00:42:10
 1. **Detect.** `minutes daemon` polls PipeWire (via `pactl`) for apps capturing from a microphone. When one matches the `apps` list (zoom, chrome, firefox, slack, …) for a few seconds, recording starts. When the app releases the mic, recording stops.
 2. **Capture.** Two `parecord` streams are recorded as separate 16 kHz mono tracks: the mic the meeting app uses ("Me") and the default output's monitor ("Them").
 3. **Transcribe.** [faster-whisper](https://github.com/SYSTRAN/faster-whisper) transcribes each track on the CPU. The segments are merged by timestamp into a speaker-labelled transcript. Mic segments that just repeat the other side (speaker bleed when you're not wearing headphones) are dropped.
-4. **Summarize.** `claude -p` adds a title, overview, decisions and action items, and the file is renamed to match the title.
+4. **Match the calendar.** If you've added calendar feeds, the event happening when the recording started supplies the meeting title and attendee list.
+5. **Summarize.** `claude -p` adds an overview, decisions and action items, using attendee names where it can. If no calendar event matched, Claude also suggests a title and the file is renamed to match.
 
 Output goes to `~/Meetings/YYYY-MM-DD-HHMM-<title>.md`. Audio is kept in `~/.local/share/minutes/sessions/` by default, so you can re-transcribe it with a better model later.
 
@@ -87,7 +88,32 @@ start_delay = 3           # seconds an app must hold the mic before recording st
 stop_delay = 20           # seconds after release before recording stops
 min_duration = 30         # auto-recordings shorter than this are discarded
 summary_prompt = """..."""  # customise the summary format
+calendars = ["https://calendar.google.com/calendar/ical/.../basic.ics"]
+calendar_email = "you@example.com"   # skip overlapping events you declined
+calendar_window = 15                 # minutes before an event a recording may start
 ```
+
+## Calendar titles and attendees
+
+`calendars` takes iCal feed URLs or local `.ics` paths. You can list several, for example work and personal.
+
+**Google Calendar:** go to Settings → *your calendar* → Integrate calendar, and copy the **Secret address in iCal format**. It needs no OAuth app or API key. Treat the URL like a password: anyone who has it can read the calendar. `minutes config` doesn't print it, and it never appears in logs. (Some Google Workspace admins turn this address off.)
+
+How a recording is matched to an event:
+
+- **Eligible events:** in progress when recording started, or starting within `calendar_window` minutes.
+- **Skipped:** all-day, cancelled and declined events.
+- **Recurring events:** expanded correctly.
+- **Tie-breaks:** events with a Zoom, Meet, Teams or similar link win over plain blocks like "Focus time"; after that, the event whose start is closest wins.
+
+Feeds are cached, so matching still works offline. To check the setup:
+
+```sh
+minutes calendar                         # what would match right now
+minutes calendar --at 2026-10-29T14:00
+```
+
+A calendar title (or a `--title` you pass yourself) is never replaced by Claude's suggested title.
 
 ## Using transcripts with Claude Code
 
