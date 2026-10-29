@@ -77,7 +77,7 @@ class Config:
     # Seconds a meeting app must hold the mic before recording starts.
     start_delay: float = 3.0
     # Seconds after the mic is released before recording stops (apps blip on device changes).
-    stop_delay: float = 20.0
+    stop_delay: float = 10.0
     # Auto-recordings shorter than this many seconds are discarded.
     min_duration: float = 30.0
     poll_interval: float = 2.0
