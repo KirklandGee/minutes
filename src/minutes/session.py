@@ -62,7 +62,7 @@ def record(
     recorder.start()
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATE_PATH.write_text(json.dumps({
-        "pid": os.getpid(), "app": app, "auto": auto,
+        "pid": os.getpid(), "app": app, "title": title, "auto": auto,
         "started": started.isoformat(), "session_dir": str(session_dir),
     }))
     (session_dir / "session.json").write_text(json.dumps({

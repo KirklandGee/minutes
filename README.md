@@ -73,6 +73,22 @@ Hyprland keybind for manual recording:
 bindd = SUPER ALT, R, Toggle meeting recording, exec, minutes toggle
 ```
 
+### Status bar indicator
+
+`minutes bar` prints Waybar-style JSON while a recording is running and nothing while idle, so the widget only appears during a recording. Clicking it stops the recording.
+
+Omarchy (`~/.config/omarchy/shell.json`, under `bar.layout.right`):
+
+```json
+{ "id": "minutes", "type": "command", "exec": "~/.local/bin/minutes bar", "interval": 2, "onClick": "~/.local/bin/minutes toggle" }
+```
+
+Waybar:
+
+```json
+"custom/minutes": { "exec": "minutes bar", "return-type": "json", "interval": 2, "on-click": "minutes toggle" }
+```
+
 ## Configuration
 
 `~/.config/minutes/config.toml` (all keys optional; `minutes config` prints the effective values):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import shutil
@@ -80,6 +81,22 @@ def cmd_status(args, cfg):
     print(f"meeting app on mic: {meeting.app} ({meeting.source})" if meeting else "meeting app on mic: none")
 
 
+def cmd_bar(args, cfg):
+    """Waybar-style JSON for status bars. Prints nothing when idle so the widget hides."""
+    from datetime import datetime
+
+    state = session.current()
+    if not state:
+        return
+    started = datetime.fromisoformat(state["started"])
+    label = state.get("title") or ("Manual recording" if state["app"] == "manual" else state["app"].title())
+    print(json.dumps({
+        "text": "󰑊",
+        "tooltip": f"Recording: {label} · since {started:%-I:%M %p} · click to stop",
+        "class": "active",
+    }, ensure_ascii=False))
+
+
 def cmd_process(args, cfg):
     print(session.process(Path(args.session_dir).expanduser().resolve(), cfg))
 
@@ -142,6 +159,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("stop", help="stop the current recording").set_defaults(func=cmd_stop)
     sub.add_parser("toggle", help="start or stop a recording in the background (for keybinds)").set_defaults(func=cmd_toggle)
     sub.add_parser("status", help="show recording state and detected meeting app").set_defaults(func=cmd_status)
+    sub.add_parser("bar", help="status bar JSON (Waybar/Omarchy command widget); empty when idle").set_defaults(func=cmd_bar)
 
     p = sub.add_parser("process", help="(re)transcribe a saved audio session directory")
     p.add_argument("session_dir")
