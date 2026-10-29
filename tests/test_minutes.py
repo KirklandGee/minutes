@@ -43,6 +43,17 @@ def test_drop_echo_removes_speaker_bleed():
     assert [s.text for s in drop_echo(segs)] == ["Let's ship it on Friday.", "Sounds good."]
 
 
+
+def test_drop_echo_catches_fragment_of_longer_segment():
+    segs = [
+        Segment(25.4, 36.9, "Them", "Cut that synergizes with your deck and you say, okay, I chibbled a bunch,"),
+        Segment(35.0, 36.9, "Me", "Okay, I should have a bunch."),
+        Segment(37.9, 43.7, "Them", "Now it's time for something that actually does what the deck wants to do."),
+        Segment(37.9, 38.9, "Me", "Now it's..."),
+        Segment(38.9, 49.5, "Me", "Yeah, that makes sense."),
+    ]
+    assert [s.text for s in drop_echo(segs) if s.speaker == "Me"] == ["Yeah, that makes sense."]
+
 def test_render_and_set_summary():
     started = datetime(2026, 10, 29, 14, 30, tzinfo=timezone.utc)
     md = markdown.render("Zoom meeting", started, "zoom", 125, [Segment(65, 70, "Me", "Hi.")], None, None)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import wave
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -51,12 +52,24 @@ def drop_echo(segments: list[Segment], threshold: float = 0.6) -> list[Segment]:
 
     def is_echo(seg: Segment) -> bool:
         return any(
-            t.start < seg.end + 1 and seg.start < t.end + 1
-            and SequenceMatcher(None, seg.text.lower(), t.text.lower()).ratio() >= threshold
+            t.start < seg.end + 1 and seg.start < t.end + 1 and echo_coverage(seg.text, t.text) >= threshold
             for t in them
         )
 
     return [s for s in segments if s.speaker != "Me" or not is_echo(s)]
+
+
+def echo_coverage(mine: str, theirs: str) -> float:
+    """Fraction of `mine`'s words found, in order, in `theirs` (catches short echoes of long segments)."""
+    a, b = words(mine), words(theirs)
+    if not a:
+        return 0.0
+    blocks = SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks()
+    return sum(m.size for m in blocks) / len(a)
+
+
+def words(text: str) -> list[str]:
+    return re.findall(r"[\w']+", text.lower())
 
 
 def merge(segments: list[Segment], max_gap: float = 2.0) -> list[Segment]:
