@@ -68,8 +68,10 @@ class Config:
     # Substrings matched against the binary/app name of anything holding the mic.
     apps: list[str] = field(
         default_factory=lambda: [
-            "zoom", "chrome", "chromium", "firefox", "brave", "vivaldi", "edge",
-            "slack", "teams", "discord", "webex", "signal",
+            "zoom", "slack", "teams", "discord", "webex", "signal",
+            # Browsers (Meet and other web calls), including Chromium/Firefox forks.
+            "chrome", "chromium", "helium", "brave", "vivaldi", "edge", "opera", "thorium",
+            "firefox", "librewolf", "zen", "floorp", "waterfox",
         ]
     )
     # Seconds a meeting app must hold the mic before recording starts.
