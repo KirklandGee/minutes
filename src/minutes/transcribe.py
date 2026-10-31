@@ -11,6 +11,8 @@ from pathlib import Path
 from minutes.config import Config
 
 SPEAKERS = {"mic": "Me", "system": "Them"}
+# Audio is decoded and transcribed this many seconds at a time, so memory stays flat for long meetings.
+CHUNK_SECONDS = 600
 
 
 @dataclass
@@ -27,23 +29,47 @@ def transcribe(wavs: dict[str, Path], cfg: Config) -> list[Segment]:
     model = WhisperModel(cfg.model, device="cpu", compute_type=cfg.compute_type)
     segments: list[Segment] = []
     for track, path in wavs.items():
-        result, _info = model.transcribe(
-            load_wav(path), language=cfg.language or None, beam_size=cfg.beam_size, vad_filter=True
-        )
-        for s in result:
-            text = s.text.strip()
-            if text:
-                segments.append(Segment(s.start, s.end, SPEAKERS.get(track, track), text))
+        for offset, audio in wav_chunks(path):
+            result, _info = model.transcribe(
+                audio, language=cfg.language or None, beam_size=cfg.beam_size, vad_filter=True
+            )
+            for s in result:
+                text = s.text.strip()
+                if text:
+                    segments.append(Segment(offset + s.start, offset + s.end, SPEAKERS.get(track, track), text))
     return merge(drop_echo(segments))
 
 
-def load_wav(path: Path):
-    """Read our 16 kHz mono s16 WAVs straight into the float array whisper wants (skips PyAV)."""
+def wav_chunks(path: Path, size: float = CHUNK_SECONDS, search: float = 20.0):
+    """Yield (offset seconds, float audio) pieces of our 16 kHz mono s16 WAVs (read directly; skips PyAV).
+
+    Each piece ends at the quietest moment in its last `search` seconds, so words aren't cut in half.
+    """
     import numpy as np
 
     with wave.open(str(path), "rb") as w:
-        pcm = w.readframes(w.getnframes())
-    return np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        rate, total = w.getframerate(), w.getnframes()
+        start, carry = 0, np.empty(0, dtype=np.int16)
+        while True:
+            fresh = np.frombuffer(w.readframes(int(size * rate) - len(carry)), dtype=np.int16)
+            pcm = np.concatenate([carry, fresh])
+            if start + len(pcm) >= total:
+                if len(pcm):
+                    yield start / rate, pcm.astype(np.float32) / 32768.0
+                return
+            tail = int(search * rate)
+            cut = len(pcm) - tail + quietest(pcm[-tail:], rate)
+            yield start / rate, pcm[:cut].astype(np.float32) / 32768.0
+            start, carry = start + cut, pcm[cut:]
+
+
+def quietest(pcm, rate: int, frame: float = 0.1) -> int:
+    """Sample index at the centre of the lowest-energy `frame`-second window."""
+    import numpy as np
+
+    n = int(frame * rate)
+    frames = pcm[: len(pcm) // n * n].astype(np.float32).reshape(-1, n)
+    return int(np.argmin((frames**2).mean(axis=1))) * n + n // 2
 
 
 def drop_echo(segments: list[Segment], threshold: float = 0.6) -> list[Segment]:

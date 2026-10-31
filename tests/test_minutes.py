@@ -78,3 +78,39 @@ def test_output_path():
 def test_split_title():
     assert split_title("Title: **Roadmap sync**\n\n### Overview\nx") == ("Roadmap sync", "### Overview\nx")
     assert split_title("### Overview\nx") == (None, "### Overview\nx")
+
+
+def test_wav_chunks_split_at_silence_and_cover_everything(tmp_path):
+    import wave
+
+    import numpy as np
+
+    from minutes.transcribe import wav_chunks
+
+    rate = 16000
+    rng = np.random.default_rng(0)
+    pcm = (rng.standard_normal(rate * 25) * 3000).astype(np.int16)
+    pcm[rate * 7 : rate * 7 + 1600] = 0  # a quiet 0.1s at 7s, inside the search window before the 10s mark
+    path = tmp_path / "t.wav"
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1), w.setsampwidth(2), w.setframerate(rate)
+        w.writeframes(pcm.tobytes())
+
+    chunks = list(wav_chunks(path, size=10, search=5))
+    assert abs(chunks[1][0] - 7.05) < 0.01
+    assert sum(len(a) for _, a in chunks) == len(pcm)
+    assert np.allclose(np.concatenate([a for _, a in chunks]), pcm / 32768.0)
+
+
+def test_browser_ignored_while_discord_open_unless_in_a_call():
+    from minutes.config import Config
+    from minutes.detect import ignored_browser_use
+
+    cfg = Config()
+    discord = ("chrome-discord.com__channels_@me-default", "discord | friends")
+    terminal = ("org.omarchy.terminal", "reading about discord")
+    meet = ("helium", "meet - abc-defg-hij - helium")
+    assert ignored_browser_use(cfg, [discord])
+    assert not ignored_browser_use(cfg, [discord, meet])
+    assert not ignored_browser_use(cfg, [terminal])
+    assert not ignored_browser_use(cfg, None)

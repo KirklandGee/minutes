@@ -29,7 +29,7 @@ duration: 00:42:10
 
 ## How it works
 
-1. **Detect.** `minutes daemon` polls PipeWire (via `pactl`) for apps capturing from a microphone. When one matches the `apps` list (zoom, chrome, firefox, slack, …) for a few seconds, recording starts. When the app releases the mic, recording stops.
+1. **Detect.** `minutes daemon` polls PipeWire (via `pactl`) for apps capturing from a microphone. When one matches the `apps` list (zoom, chrome, firefox, slack, …) for a few seconds, a notification asks whether to record it (set `ask = false` to start recording on its own). When the app releases the mic, recording stops.
 2. **Capture.** Two `parecord` streams are recorded as separate 16 kHz mono tracks: the mic the meeting app uses ("Me") and the default output's monitor ("Them").
 3. **Transcribe.** [faster-whisper](https://github.com/SYSTRAN/faster-whisper) transcribes each track on the CPU. The segments are merged by timestamp into a speaker-labelled transcript. Mic segments that just repeat the other side (speaker bleed when you're not wearing headphones) are dropped.
 4. **Match the calendar.** If you've added calendar feeds, the event happening when the recording started supplies the meeting title and attendee list.
@@ -42,7 +42,7 @@ Output goes to `~/Meetings/YYYY-MM-DD-HHMM-<title>.md`. Audio is kept in `~/.loc
 - Linux with PipeWire (`pipewire-pulse`) or PulseAudio: provides `pactl` and `parecord`
 - Python 3.11+ and [uv](https://docs.astral.sh/uv/)
 - Optional: [Claude Code](https://claude.com/claude-code) (`claude` on your PATH) for summaries
-- Optional: `notify-send` for desktop notifications
+- Optional: `notify-send` for desktop notifications and the "Record this meeting?" prompt (without it, meetings record automatically)
 
 ## Install
 
@@ -100,7 +100,10 @@ model = "small.en"        # tiny.en | base.en | small.en | medium.en | large-v3 
 language = "en"           # "" to auto-detect (use a multilingual model)
 summarize = true
 apps = ["zoom", "chrome", "firefox", "slack", "teams"]
-start_delay = 3           # seconds an app must hold the mic before recording starts
+ignore_windows = ["discord"]   # Hyprland: ignore browser mic use while a window with this class is open...
+meeting_windows = ["meet - ", "zoom", "microsoft teams"]  # ...unless a window looks like a call
+ask = true                # ask with a notification first; false records automatically
+start_delay = 3           # seconds an app must hold the mic before you're asked
 stop_delay = 10           # seconds after release before recording stops
 min_duration = 30         # auto-recordings shorter than this are discarded
 summary_prompt = """..."""  # customise the summary format
@@ -142,7 +145,8 @@ cd ~/Meetings && claude "what did I commit to in meetings this week?"
 ## Caveats
 
 - **Consent.** Recording laws differ by place, and many require everyone on the call to agree. Tell people you're taking notes.
-- Browsers are matched as a whole. Any site that uses your mic in Chrome or Firefox will trigger a recording. Trim the `apps` list if that's too broad, and auto-recordings under `min_duration` are discarded anyway.
+- Browsers are matched as a whole. Any site that uses your mic in Chrome or Firefox will trigger a recording. Trim the `apps` list if that's too broad, and auto-recordings under `min_duration` are discarded anyway. On Hyprland, web apps such as Discord are skipped: while a window whose class matches `ignore_windows` is open, browser mic use is ignored unless some window's title matches `meeting_windows` (a Google Meet tab is titled "Meet - …"). If you're in a web call that isn't on that list while Discord is open, use `minutes toggle`.
+- Transcription loads the Whisper model (about 1 GB of RAM for `small.en`), only while a recording is being transcribed. Audio is processed in 10-minute pieces, so long meetings don't need more memory, and only one transcription runs at a time. `base.en` uses less memory but is less accurate.
 - "Them" is everything coming out of your speakers, including notification sounds and music.
 - If your output device changes mid-call (for example, Bluetooth headphones connect), the system track keeps recording the old device.
 

@@ -77,7 +77,7 @@ def cmd_status(args, cfg):
         print(f"recording: {state['app']} since {state['started']} (pid {state['pid']})")
     else:
         print("idle")
-    meeting = find_meeting(cfg.apps)
+    meeting = find_meeting(cfg)
     print(f"meeting app on mic: {meeting.app} ({meeting.source})" if meeting else "meeting app on mic: none")
 
 

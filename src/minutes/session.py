@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
@@ -97,8 +98,12 @@ def process(session_dir: Path, cfg: Config) -> Path:
     wavs = {t: p for t, p in wavs.items() if p.exists()}
     length = max((duration(w) for w in wavs.values()), default=0.0)
 
-    log.info("transcribing %s with %s", session_dir, cfg.model)
-    segments = transcribe(wavs, cfg)
+    # One transcription at a time: back-to-back meetings would otherwise each load a Whisper model.
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    with open(RUNTIME_DIR / "transcribe.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        log.info("transcribing %s with %s", session_dir, cfg.model)
+        segments = transcribe(wavs, cfg)
 
     title, title_source, attendees = meta.get("title"), "manual", []
     if not title and (event := calendar.find_event(cfg, started)):

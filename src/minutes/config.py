@@ -37,6 +37,13 @@ Title: <a short descriptive title for the meeting, under 8 words>
 """
 
 
+# Browsers (Google Meet and other web calls), including Chromium/Firefox forks.
+BROWSERS = [
+    "chrome", "chromium", "helium", "brave", "vivaldi", "edge", "opera", "thorium",
+    "firefox", "librewolf", "zen", "floorp", "waterfox",
+]
+
+
 @dataclass
 class Config:
     # Where transcripts (.md) are written.
@@ -66,15 +73,17 @@ class Config:
     calendar_window: float = 15.0
 
     # Substrings matched against the binary/app name of anything holding the mic.
-    apps: list[str] = field(
-        default_factory=lambda: [
-            "zoom", "slack", "teams", "discord", "webex", "signal",
-            # Browsers (Meet and other web calls), including Chromium/Firefox forks.
-            "chrome", "chromium", "helium", "brave", "vivaldi", "edge", "opera", "thorium",
-            "firefox", "librewolf", "zen", "floorp", "waterfox",
-        ]
+    apps: list[str] = field(default_factory=lambda: ["zoom", "slack", "teams", "webex", "signal", *BROWSERS])
+    # Hyprland only: a browser using the mic is ignored while a window whose class contains one of
+    # these is open (web apps like Discord run inside the browser, so the audio stream can't tell them apart)...
+    ignore_windows: list[str] = field(default_factory=lambda: ["discord"])
+    # ...unless a window also looks like a call.
+    meeting_windows: list[str] = field(
+        default_factory=lambda: ["meet - ", "meet.google.com", "zoom", "microsoft teams", "webex", "whereby", "jitsi", "huddle"]
     )
-    # Seconds a meeting app must hold the mic before recording starts.
+    # Ask with a notification before recording (false: start recording on its own).
+    ask: bool = True
+    # Seconds a meeting app must hold the mic before recording starts (or you're asked).
     start_delay: float = 3.0
     # Seconds after the mic is released before recording stops (apps blip on device changes).
     stop_delay: float = 10.0

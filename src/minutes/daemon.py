@@ -1,9 +1,10 @@
-"""Background loop: start a recording when a meeting app grabs the mic, stop when it lets go."""
+"""Background loop: offer to record when a meeting app grabs the mic, stop when it lets go."""
 
 from __future__ import annotations
 
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -11,7 +12,7 @@ import time
 
 from minutes import session
 from minutes.config import Config
-from minutes.detect import find_meeting
+from minutes.detect import MicUser, find_meeting
 
 log = logging.getLogger("minutes")
 
@@ -22,12 +23,13 @@ def run(cfg: Config) -> None:
     present_since: float | None = None
     absent_since: float | None = None
     we_started = False  # the active recording was started by us
-    suppressed = False  # user stopped our recording; wait for the mic to be released
+    suppressed = False  # user stopped our recording or declined; wait for the mic to be released
+    prompt: Prompt | None = None
 
     while True:
         children = [c for c in children if c.poll() is None]  # reap finished sessions
         now = time.monotonic()
-        meeting = find_meeting(cfg.apps)
+        meeting = find_meeting(cfg)
         active = session.current()
 
         if we_started and active is None:
@@ -37,20 +39,29 @@ def run(cfg: Config) -> None:
 
         if meeting:
             absent_since = None
-            if active is None and not suppressed:
+            if prompt and (answer := prompt.answer()) is not None:
+                prompt = None
+                if answer == "record" and session.current() is None:
+                    children.append(start(meeting))
+                    we_started = True
+            elif active is None and not suppressed and not prompt:
                 present_since = present_since or now
                 if now - present_since >= cfg.start_delay:
-                    log.info("%s is using %s; starting recording", meeting.app, meeting.source)
-                    cmd = [sys.executable, "-m", "minutes", "record", "--auto", "--app", meeting.app]
-                    if meeting.source:
-                        cmd += ["--mic-source", meeting.source]
-                    children.append(subprocess.Popen(cmd, start_new_session=True))
-                    we_started = True
                     present_since = None
-                    _wait_for_state()
+                    if cfg.ask and shutil.which("notify-send"):
+                        log.info("%s is using %s; asking whether to record", meeting.app, meeting.source)
+                        prompt = Prompt(meeting)
+                        suppressed = True  # one question per stretch of mic use
+                    else:
+                        log.info("%s is using %s; starting recording", meeting.app, meeting.source)
+                        children.append(start(meeting))
+                        we_started = True
         else:
             present_since = None
             suppressed = False
+            if prompt:  # the call ended before anyone answered
+                prompt.close()
+                prompt = None
             if active and active.get("auto") and we_started:
                 absent_since = absent_since or now
                 if now - absent_since >= cfg.stop_delay:
@@ -59,6 +70,44 @@ def run(cfg: Config) -> None:
                     absent_since = None
 
         time.sleep(cfg.poll_interval)
+
+
+def start(meeting: MicUser) -> subprocess.Popen:
+    cmd = [sys.executable, "-m", "minutes", "record", "--auto", "--app", meeting.app]
+    if meeting.source:
+        cmd += ["--mic-source", meeting.source]
+    proc = subprocess.Popen(cmd, start_new_session=True)
+    _wait_for_state()
+    return proc
+
+
+class Prompt:
+    """A "Record this meeting?" notification with Record / Not now buttons."""
+
+    def __init__(self, meeting: MicUser):
+        self.proc = subprocess.Popen(
+            ["notify-send", "-a", "minutes", "-p", "-t", "0", "--wait",
+             "-A", "record=Record", "-A", "dismiss=Not now",
+             "Meeting detected", f"{meeting.app.title()} is using your mic. Record it?"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        )
+        self.id = self.proc.stdout.readline().strip()  # printed as soon as it's shown
+
+    def answer(self) -> str | None:
+        """The clicked action ("" if dismissed), or None while still waiting."""
+        if self.proc.poll() is None:
+            return None
+        return self.proc.stdout.read().strip()
+
+    def close(self) -> None:
+        self.proc.terminate()
+        if self.id.isdigit():
+            subprocess.run(
+                ["gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
+                 "--object-path", "/org/freedesktop/Notifications",
+                 "--method", "org.freedesktop.Notifications.CloseNotification", self.id],
+                capture_output=True, check=False,
+            )
 
 
 def _wait_for_state(timeout: float = 5.0) -> None:
